@@ -10,12 +10,12 @@
 #include <arpa/inet.h>
 #include <sys/wait.h>
 #include <signal.h>
-#include <time.h>
+#include <sys/time.h>
 #include <map>
 #include <pthread.h>
 #include <mutex>
 #include <iostream>
-#include <csignal>
+
 using namespace std;
 
 #define PORT "8888"  // the port users will be connecting to
@@ -42,8 +42,6 @@ mutex mtx;
 
 //for recv timeout
 struct timeval tv;
-tv.tv_sec = 30;  /* 30 Secs Timeout */
-tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
@@ -55,6 +53,11 @@ void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
+void sigchld_handler(int s)
+{
+	while(waitpid(-1, NULL, WNOHANG) > 0);
+}
+
 
 void *threadForClient(void* s)
 {
@@ -62,7 +65,7 @@ void *threadForClient(void* s)
 	char* buf;
 	bool flag = true;
 	string table;
-
+	int rv;
 	if((rv = recv(clientMap[client_ip].sock_fd, buf, 5, 0))>0)
 	{
 		if(strcmp (buf, "ping")==0)
@@ -80,16 +83,8 @@ void *threadForClient(void* s)
 			clientMap[client_ip].ttl = time(0);
 			for(auto it=clientMap.begin();it!=clientMap.end();it++)
 			{
-				cout << it->second.ip << " " << time(0)-it->second.ttl;
-				if(time(0) - it->second.ttl > TTL)
-				{
-					clientMap[it->second.ip].active = false;
-				}
-				else
-				{
-					table += it->second.ip;
-					table += "\n";
-				}
+				table += it->second.ip;
+				table += "\n";
 			}
 			mtx.unlock();
 		}
@@ -117,6 +112,9 @@ int main(int argc, char const *argv[])
 	char s[INET6_ADDRSTRLEN];
 	string client_ip;
 
+	//for recv timeout
+	tv.tv_sec = 30;  /* 30 Secs Timeout */
+	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -224,8 +222,8 @@ int main(int argc, char const *argv[])
 	
 		if (rc){
 	     	fprintf(stderr,"Error:unable to create thread, %d\n",rc);
-	     	close(client_table[client_ip].sock_fd);
-	     	client_table.erase(client_ip);
+	     	close(clientMap[client_ip].sock_fd);
+	     	clientMap.erase(client_ip);
 	  	}
 
 	}
