@@ -68,7 +68,7 @@ void *threadForClient(void* s)
 	int rv;
 	if((rv = recv(clientMap[client_ip].sock_fd, buf, 5, 0))>0)
 	{
-		if(strcmp (buf, "ping")==0)
+		if(strcmp (buf, "PING")==0)
 		{
 			//not even required as TTL is not the 30sec associated with recv timeout
 			//remove time entirely from map.
@@ -76,8 +76,12 @@ void *threadForClient(void* s)
 			mtx.lock();
 			clientMap[client_ip].ttl = time(0);
 			mtx.unlock();
+			if(send(client_table[client_ip].sock_fd, "ACK", 5, 0) <0)
+			{
+				fprintf(stderr,"Error in sending ping ACK to %s\n",client_table[client_ip].ip.c_str());
+			}
 		}
-		if(strcmp (buf, "list")==0)
+		if(strcmp (buf, "LIST")==0)
 		{
 			mtx.lock();
 			clientMap[client_ip].ttl = time(0);
@@ -87,6 +91,11 @@ void *threadForClient(void* s)
 				table += "\n";
 			}
 			mtx.unlock();
+
+			if(send(client_table[client_ip].sock_fd, table.c_str(), MAXDATASIZE-1, 0) < 0)
+			{
+				fprintf(stderr,"Error in sending client table to %s\n",client_table[client_ip].ip.c_str());
+			}
 		}
 	}
 
