@@ -174,7 +174,8 @@ void *chatSend(void *fd)
 
 		//writting to chat file
 		mtx.lock();
-		fprintf(f, "ME%s\n", (char *)(buf.c_str()));
+		if(f!=0) fprintf(f, "ME%s\n", (char *)(buf.c_str()));
+		else cout<<"ME"<<buf<<endl;
 		mtx.unlock();
 
 	}
@@ -268,7 +269,8 @@ void *chatRcv(void *fd)
 
 		//writting to chat file.
 		mtx.lock();
-		fprintf(f, "%s", (char *)(buf.c_str()));
+		if (f!=0) fprintf(f, "%s", (char *)(buf.c_str()));
+		else cout<<buf<<endl;
 		mtx.unlock();
 	}
 
@@ -287,22 +289,37 @@ int main(int argc, char const *argv[])
 	struct sigaction sa;
 	socklen_t sin_size;
 	
-	f = fopen("chat.txt","w");
-
-	if(f==NULL)
+	if (argc != 3) 
 	{
-		cout<<"Unable to open file. Application will exit...";
+		cout<<"Usage: ./client serverIP {stdin/file}\n";
+		exit(1);
+	}
+	
+	if(strcmp(argv[2],"stdin")==0)
+		f=0;
+	else if(strcmp(argv[2],"file")==0)
+	{
+		f = fopen("chat.txt","w");
+		if(f==NULL)
+		{
+			cout<<"Unable to open file. Application will exit...";
+			return 1;
+		}
+	}
+	else
+	{
+		cout<<"Usage: ./client serverIP {stdin/file}\n";
 		return 1;
 	}
+
+
+	
 
 	//recv timeout for ACK from server
 	tv.tv_sec = 3;  /* 3 Secs Timeout */
 	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 
-	if (argc != 2) {
-		fprintf(stderr,"usage: client hostname\n");
-		exit(1);
-	}
+	
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
@@ -401,11 +418,7 @@ int main(int argc, char const *argv[])
 	// string peerIP;
 	
 	
-	if (argc != 2) {
-		fprintf(stderr,"usage: client hostname\n");
-		exit(1);
-	}
-
+	
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
