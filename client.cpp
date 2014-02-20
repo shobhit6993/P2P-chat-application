@@ -83,10 +83,18 @@ void *sendPing(void *fd)
 		}
 		else 
 		{
-			cout<<"Server Down! Application will exit after current chat is over...\n";
-			close(sockfd);
-			pingAlive=false;
-			pthread_exit(NULL);
+			if(sendAlive || rcvAlive)
+			{
+				cout<<"Server Down! Application will exit after current chat is over...\n";
+				close(sockfd);
+				pingAlive=false;
+				pthread_exit(NULL);				
+			}
+			else
+			{
+				cout<<"Server Down! Application will exit"<<endl;
+				exit(1);
+			}
 		}
 		usleep(10000000); //10 sec
 	}
@@ -123,28 +131,7 @@ void *chatSend(void *fd)
 	int msgNo=1;
 	while(1)
 	{
-		/*if(!rcvAlive)		//if rcv thread is dead
-		{
-			cout<<"Connection to peer closed."<<endl;
-			close(socket);		//consider this. this should not be done.
-			/*mtx.lock();
-			if(f!=NULL) fclose(f);
-			//also remove file
-			mtx.unlock();
-			sendAlive=false;
-			pthread_exit(NULL);
-		}*/
-
-		sendAlive=true;
-		string msg;
-		string buf;
-
-		// memset(msg, '\0', sizeof(msg));
-		cout<<"ME#"<<msgNo++<<":";
-		// fgets(msg, MAXDATASIZE-3, stdin);
-		getline(cin, msg);
-		
-		if(msg.compare("\exit")==0)	//client wishes to close connection
+		if(!rcvAlive)		//if rcv thread is dead
 		{
 			cout<<"Connection to peer closed."<<endl;
 			close(socket);		//consider this. this should not be done.
@@ -156,12 +143,35 @@ void *chatSend(void *fd)
 			pthread_exit(NULL);
 		}
 
+		sendAlive=true;
+		string msg;
+		string buf;
+
+		// memset(msg, '\0', sizeof(msg));
+		cout<<"ME#"<<msgNo++<<":";
+		// fgets(msg, MAXDATASIZE-3, stdin);
+		getline(cin, msg);
+		// cout<<endl<<msg<<endl;
+		if(msg=="/exit")	//client wishes to close connection
+		{
+			cout<<"Received exit msg from user. Application will exit.\n";
+			send(socket, (char *)(msg.c_str()), size_t(msg.size()), 0);
+			exit(1);
+		}
+
 		buf="#"+to_string(msgNo-1)+":";
 		buf+=msg;
 
 		if(send(socket, (char *)(buf.c_str()), size_t(buf.size()), 0) <0)
 		{
 			fprintf(stderr,"Error in sending msg to peer\n");
+			close(socket);		//consider this. this should not be done.
+			mtx.lock();
+			if(f!=NULL) fclose(f);
+			//also remove file
+			mtx.unlock();
+			sendAlive=false;
+			pthread_exit(NULL);
 		}
 
 		//writting to chat file
@@ -177,18 +187,18 @@ void *chatRcv(void *fd)
 	int socket=(int)fd, rv;
 	while(1)
 	{
-		/*if(!sendAlive)		//if send thread is dead
+		if(!sendAlive)		//if send thread is dead
 		{
 			cout<<"Connection to peer closed."<<endl;
 			close(socket);		//consider this. this should not be done.
-			/*mtx.lock();
+			mtx.lock();
 			if(f!=NULL) fclose(f);
 			//also remove file
 			mtx.unlock();
 			rcvAlive=false;
 			pthread_exit(NULL);
 		}
-*/
+
 		rcvAlive=true;
 		char msg[MAXDATASIZE];
 		string buf;
@@ -197,11 +207,16 @@ void *chatRcv(void *fd)
 		{
 			string sMsg= string(msg);
 			 cout<<endl<<sMsg<<endl;
+			if(sMsg=="/exit") 
+			{
+				cout<<"Connection closed by peer. Application will exit"<<endl;
+				exit(1);
+			}
 			if(sMsg.substr(0,3)=="ACK")		//ACK for msg received
 			{
-				buf+="-------------------------------------------------\n";
-				buf+="MSG:"+sMsg.substr(3,sMsg.size()-3)+" seen.\n";
-				buf+="-------------------------------------------------\n";
+				// buf+="-------------------------------------------------\n";
+				buf+="\t\t\t\tMSG:"+sMsg.substr(3,sMsg.size()-3)+" seen.\n";
+				// buf+="-------------------------------------------------\n";
 			}
 			/*
 			MSG received. Need to send ACK.
@@ -223,6 +238,14 @@ void *chatRcv(void *fd)
 				if(send(socket, (char *)(ack.c_str()), size_t(ack.size()), 0) <0)
 				{
 					fprintf(stderr,"Error in sending ACK to peer\n");
+					cout<<"Connection to peer closed."<<endl;
+					close(socket);		//consider this. this should not be done.
+					mtx.lock();
+					if(f!=NULL) fclose(f);
+					//also remove file
+					mtx.unlock();
+					rcvAlive=false;
+					pthread_exit(NULL);
 				}
 
 			}
@@ -255,6 +278,7 @@ void *chatRcv(void *fd)
 
 int main(int argc, char const *argv[])
 {
+	signal(SIGPIPE, SIG_IGN);
 	int sockfd, numbytes, yes=1, rc;
 	char buf[MAXDATASIZE];
 	struct addrinfo hints, *servinfo, *p;
