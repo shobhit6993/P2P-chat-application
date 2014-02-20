@@ -1,10 +1,14 @@
 To run server
+
 g++ -std=c++11 server.cpp -lpthread -o server
 ./server
 
 To run client
+
 g++ -std=c++11 -fpermissive -w client.cpp -lpthread -o client
+
 ./client 10.0.3.41 stdin
+
 or ./client 10.0.3.41 file
 
 NOTE: the argument to ./client is the IP address of the server.
@@ -17,18 +21,27 @@ if file argument is used The chat is saved in chat.txt and no replies are visibl
 
 
 $$$$$$$$$$$$$$$$$$$$
+
 The chat is saved in chat.txt which is visible only after the clients exit (due to read permission of files in Linux)$.
+
 $$$$$$$$$$$$$$$$$$$$$
 
 ################
+
 SAMPLE OUTPUT IN CHAT
+
 #################
 
 ME#1:sho1
+
 			MSG:1 seen.
+
 	PEER#1:har1
+
 	PEER#2:har2
+
 ME#2:sho2
+
 			MSG:2 seen.
 
 ################
