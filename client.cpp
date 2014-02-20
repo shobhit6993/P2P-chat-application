@@ -39,7 +39,8 @@ using namespace std;
 
 pthread_t threads[MAXTHREADS]; //thread[0] for ping, thread[1] for peer send, thread[2] for peer rcv
 mutex mtx;
-FILE *f = fopen("chat.txt","a");
+FILE *f;
+
 bool pingAlive, sendAlive, rcvAlive;	//to check running status of the 3 threads.
 //consider if mutx req. for above or not.
 
@@ -64,7 +65,8 @@ void sigchld_handler(int s)
 void *sendPing(void *fd)
 {
 	int rv;
-	int sockfd=*((int *)fd);
+	int sockfd=(int)fd;
+	// cout<<sockfd<<"ee";
 	char buf[5];
 	while(1)
 	{
@@ -77,7 +79,7 @@ void *sendPing(void *fd)
 		if((rv = recv(sockfd, buf, 5, 0))>0)
 		{
 			if(strcmp(buf, "ACK"))
-				cout<<"Ping ACKed\n";
+				cout<<"Ping ACKed\n";	//check if really ACKed or not
 		}
 		else 
 		{
@@ -117,19 +119,20 @@ bool getOnlineClients(int sockfd)
 
 void *chatSend(void *fd)
 {
-	int socket=*((int *)fd);
+	int socket=(int)fd;
 	int msgNo=1;
 	while(1)
 	{
 		sendAlive=true;
-		char msg[MAXDATASIZE];
+		string msg;
 		string buf;
 
-		memset(msg, '\0', sizeof(msg));
+		// memset(msg, '\0', sizeof(msg));
 		cout<<"#"<<msgNo++<<":";
-		fgets(msg, MAXDATASIZE-3, stdin);
+		// fgets(msg, MAXDATASIZE-3, stdin);
+		getline(cin, msg);
 		
-		if(msg[0]=='\0')	//client wishes to close connection
+		if(msg=="")	//client wishes to close connection
 		{
 			cout<<"Connection to peer closed."<<endl;
 			close(socket);		//consider this. this should not be done.
@@ -142,7 +145,7 @@ void *chatSend(void *fd)
 		}
 
 		buf="#"+to_string(msgNo-1)+":";
-		buf+=string(msg);
+		buf+=msg;
 
 		if(send(socket, (char *)(buf.c_str()), size_t(buf.size()), 0) <0)
 		{
@@ -159,7 +162,7 @@ void *chatSend(void *fd)
 
 void *chatRcv(void *fd)
 {
-	int socket=*((int *)fd), rv;
+	int socket=(int)fd, rv;
 	while(1)
 	{
 		rcvAlive=true;
@@ -171,7 +174,7 @@ void *chatRcv(void *fd)
 			if(sMsg.substr(0,3)=="ACK")		//ACK for msg received
 			{
 				buf+="-------------------------------------------------\n";
-				buf+="MSG:"+sMsg.substr(3,sMsg.size()-1)+"seen.\n";
+				buf+="MSG:"+sMsg.substr(3,sMsg.size()-1)+" seen.\n";
 				buf+="-------------------------------------------------\n";
 			}
 			/*
@@ -180,18 +183,18 @@ void *chatRcv(void *fd)
 			*/
 			else
 			{
-				string msgNo="ACK";	//to extract msgNo. from message and build the ACK response
+				string ack="ACK";	//to extract msgNo. from message and build the ACK response
 				int i=1;	//skipping the starting '#'
 				while(sMsg[i]!=':')
 				{
 					i++;
-					msgNo+=sMsg[i];		//extracting msgNo. from the message.
+					ack+=sMsg[i];		//extracting msgNo. from the message.
 				}
 				buf=sMsg+"\n";
 
 				//sending ACK for the above message.
 
-				if(send(socket, (char *)(msgNo.c_str()), size_t(sMsg.size()), 0) <0)
+				if(send(socket, (char *)(ack.c_str()), size_t(ack.size()), 0) <0)
 				{
 					fprintf(stderr,"Error in sending ACK to peer\n");
 				}
@@ -235,6 +238,14 @@ int main(int argc, char const *argv[])
 	struct sigaction sa;
 	socklen_t sin_size;
 	
+	f = fopen("chat.txt","a");
+
+	if(f==NULL)
+	{
+		cout<<"Unable to open file. Application will exit...";
+		return 1;
+	}
+
 	//recv timeout for ACK from server
 	tv.tv_sec = 3;  /* 3 Secs Timeout */
 	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
@@ -314,7 +325,6 @@ int main(int argc, char const *argv[])
 	if(strcmp(serverMsg, "CONN")==0)	
 	{
 		cout<<"Successfully connected to server"<<endl;
-		exit(1);
 	}
 	
 	sa.sa_handler = sigchld_handler; // reap all dead processes
@@ -326,12 +336,12 @@ int main(int argc, char const *argv[])
 	}
 
 
-	if((rc = pthread_create(&threads[0], NULL , sendPing, (void*)sockfd))!=0) ;
+	if((rc = pthread_create(&threads[0], NULL , sendPing, (void*)sockfd))!=0) 
 	{
 		fprintf(stderr,"Error:unable to create thread, %d\n",rc);
 		return 1;
 	}
-
+	cout<<"Check";
 
 	/*------- creating socket for chat and binding it to port. Will be used both for connect and listen-----*/
 
@@ -393,7 +403,7 @@ int main(int argc, char const *argv[])
 
 	freeaddrinfo(clientInfo); // all done with this structure
 	
-	if (listen(sockfd, BACKLOG) == -1) {
+	if (listen(clientSocket, BACKLOG) == -1) {
 		perror("listen");
 		exit(1);
 	}
@@ -405,7 +415,7 @@ int main(int argc, char const *argv[])
 		perror("sigaction");
 		exit(1);
 	}
-
+	
 
 	//creating sets of file descriptors to be used for select command to poll them for activity
 	fd_set readfds;
@@ -472,17 +482,17 @@ int main(int argc, char const *argv[])
 				cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
 				close(new_fd);
 			}
-
+			rcvAlive=true, rcvAlive=true;
 			//wait till the above threads die.
-			while(sendAlive && rcvAlive);
+			while(sendAlive || rcvAlive);
 		}
 
 		//if stdin gets first
-		if(FD_ISSET(0, &readfds))
+		else if(FD_ISSET(0, &readfds))
 		{
 			cout<<"stdin got here first\n";
 			cin>>choice;
-
+			cout<<"choice="<<choice<<endl;
 			int peerSocket;
 			// char buf[MAXDATASIZE];
 			struct addrinfo *peerinfo;
@@ -506,7 +516,7 @@ int main(int argc, char const *argv[])
 						hints.ai_socktype = SOCK_STREAM;
 
 						// char *temp= (char *) peerIP
-						if ((rv = getaddrinfo((char *)(peerIP.c_str()), PEERPORT, &hints, &peerinfo)) != 0) {
+						if ((rv = getaddrinfo((char *)(peerIP.c_str()), CLIENTPORT, &hints, &peerinfo)) != 0) {
 							fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 							return 1;
 						}
@@ -546,6 +556,26 @@ int main(int argc, char const *argv[])
 
 						freeaddrinfo(peerinfo); // all done with this structure
 
+						//checking for positive response from peer
+						if((rv = recv(peerSocket, buf, 1, 0))>0)
+						{
+							cout<<buf<<endl;
+							if(buf[0]== 'y')
+								cout<<"Connected successfully to peer. You may now start chatting\n\n\n";
+							else
+							{
+								fprintf(stderr, "Peer denied connection request\n");
+								close(peerSocket);
+								continue;
+							}
+						}
+						else
+						{
+							fprintf(stderr, "Peer failed to connect\n");
+							close(peerSocket);
+							continue;
+						}
+
 						//create threads for chat send and chat rcv.
 						if(pthread_create(&threads[1], NULL , chatSend, (void*)peerSocket)!=0) //for send
 						{
@@ -557,9 +587,10 @@ int main(int argc, char const *argv[])
 							cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
 							close(peerSocket);
 						}
+						rcvAlive=true, rcvAlive=true;
 
 						//wait for both threads to complete
-						while(sendAlive && rcvAlive);
+						while(sendAlive || rcvAlive);
 						
 						break;	//break of switch case statement
 

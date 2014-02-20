@@ -63,17 +63,19 @@ void sigchld_handler(int s)
 void *threadForClient(void* s)
 {
 	string client_ip = (char*)s;
-	char* buf;
-	bool flag = true;
-	string table;
-	int rv;
-	if((rv = recv(clientMap[client_ip].sock_fd, buf, 5, 0))>0)
+	char buf[5];
+
+	// string table;
+	int rv=0;
+	while((rv = recv(clientMap[client_ip].sock_fd, buf, 5, 0))>0)
 	{
+		string table;
 		if(strcmp (buf, "PING")==0)
 		{
 			//not even required as TTL is not the 30sec associated with recv timeout
 			//remove time entirely from map.
 			//if ping is recvd, do nothing.
+			cout<<"PING from"<<client_ip<<endl;
 			mtx.lock();
 			clientMap[client_ip].ttl = time(0);
 			mtx.unlock();
@@ -102,6 +104,7 @@ void *threadForClient(void* s)
 
 	if(rv<=0)		//recv timedout implies client no longer alive
 	{
+		cout<<"Client "<<client_ip<<"unreachable. It will be disconnected!"<<endl;
 		mtx.lock();
 		close(clientMap[client_ip].sock_fd);
 		clientMap.erase(client_ip);
@@ -109,7 +112,6 @@ void *threadForClient(void* s)
 		pthread_exit(NULL);
 	}
 }
-
 
 int main(int argc, char const *argv[])
 {
@@ -229,8 +231,8 @@ int main(int argc, char const *argv[])
 		clientMap[client_ip].ttl = time(0);
 
 		mtx.unlock();
-
-		if((rc = pthread_create(&threads[threadMap[client_ip]], NULL , threadForClient, (void*)s))!=0) ;
+		
+		if((rc = pthread_create(&threads[threadMap[client_ip]], NULL , threadForClient, (void*)s))!=0)
 		{
 			fprintf(stderr,"Error:unable to create thread, %d\n",rc);
 			close(clientMap[client_ip].sock_fd);
