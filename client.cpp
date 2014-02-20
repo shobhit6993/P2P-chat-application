@@ -123,21 +123,33 @@ void *chatSend(void *fd)
 	int msgNo=1;
 	while(1)
 	{
+		/*if(!rcvAlive)		//if rcv thread is dead
+		{
+			cout<<"Connection to peer closed."<<endl;
+			close(socket);		//consider this. this should not be done.
+			/*mtx.lock();
+			if(f!=NULL) fclose(f);
+			//also remove file
+			mtx.unlock();
+			sendAlive=false;
+			pthread_exit(NULL);
+		}*/
+
 		sendAlive=true;
 		string msg;
 		string buf;
 
 		// memset(msg, '\0', sizeof(msg));
-		cout<<"#"<<msgNo++<<":";
+		cout<<"ME#"<<msgNo++<<":";
 		// fgets(msg, MAXDATASIZE-3, stdin);
 		getline(cin, msg);
 		
-		if(msg=="")	//client wishes to close connection
+		if(msg.compare("\exit")==0)	//client wishes to close connection
 		{
 			cout<<"Connection to peer closed."<<endl;
 			close(socket);		//consider this. this should not be done.
 			mtx.lock();
-			fclose(f);
+			if(f!=NULL) fclose(f);
 			//also remove file
 			mtx.unlock();
 			sendAlive=false;
@@ -154,7 +166,7 @@ void *chatSend(void *fd)
 
 		//writting to chat file
 		mtx.lock();
-		fprintf(f, "%s", (char *)(buf.c_str()));
+		fprintf(f, "ME%s\n", (char *)(buf.c_str()));
 		mtx.unlock();
 
 	}
@@ -165,16 +177,30 @@ void *chatRcv(void *fd)
 	int socket=(int)fd, rv;
 	while(1)
 	{
+		/*if(!sendAlive)		//if send thread is dead
+		{
+			cout<<"Connection to peer closed."<<endl;
+			close(socket);		//consider this. this should not be done.
+			/*mtx.lock();
+			if(f!=NULL) fclose(f);
+			//also remove file
+			mtx.unlock();
+			rcvAlive=false;
+			pthread_exit(NULL);
+		}
+*/
 		rcvAlive=true;
 		char msg[MAXDATASIZE];
 		string buf;
+		memset(msg, '\0', MAXDATASIZE);
 		if((rv=recv(socket, msg, MAXDATASIZE, 0))>0)
 		{
 			string sMsg= string(msg);
+			 cout<<endl<<sMsg<<endl;
 			if(sMsg.substr(0,3)=="ACK")		//ACK for msg received
 			{
 				buf+="-------------------------------------------------\n";
-				buf+="MSG:"+sMsg.substr(3,sMsg.size()-1)+" seen.\n";
+				buf+="MSG:"+sMsg.substr(3,sMsg.size()-3)+" seen.\n";
 				buf+="-------------------------------------------------\n";
 			}
 			/*
@@ -187,10 +213,10 @@ void *chatRcv(void *fd)
 				int i=1;	//skipping the starting '#'
 				while(sMsg[i]!=':')
 				{
-					i++;
 					ack+=sMsg[i];		//extracting msgNo. from the message.
+					i++;
 				}
-				buf=sMsg+"\n";
+				buf="\tPEER"+sMsg+"\n";
 
 				//sending ACK for the above message.
 
@@ -203,15 +229,15 @@ void *chatRcv(void *fd)
 		}
 		else if (rv<0)
 		{
-			perror("rcv");
-			continue;
+			perror("rcvsdfsdf");
+			exit(1);
 		}
 		else //rv==0
 		{
 			cout<<"Connection closed by peer. Chat will exit.";
 			close(socket);		//think about this. you can't close socket.
 			mtx.lock();
-			fclose(f);
+			if(f!=NULL) fclose(f);
 			//also remove file
 			mtx.unlock();
 			rcvAlive=false;
@@ -472,19 +498,24 @@ int main(int argc, char const *argv[])
 			}
 
 			//create threads for chat send and chat rcv.
+			rcvAlive=true, sendAlive=true;
 			if(pthread_create(&threads[1], NULL , chatSend, (void*)new_fd)!=0) //for send
 			{
 				cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
 				close(new_fd);
+				rcvAlive=false, sendAlive=false;
+				continue;
 			}
 			if( pthread_create(&threads[2], NULL , chatRcv, (void*)new_fd)!=0)
 			{
 				cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
+				rcvAlive=false, sendAlive=false;
 				close(new_fd);
+				continue;
 			}
-			rcvAlive=true, rcvAlive=true;
+			
 			//wait till the above threads die.
-			while(sendAlive || rcvAlive);
+			while(sendAlive && rcvAlive);
 		}
 
 		//if stdin gets first
@@ -557,6 +588,7 @@ int main(int argc, char const *argv[])
 						freeaddrinfo(peerinfo); // all done with this structure
 
 						//checking for positive response from peer
+						memset(buf, '\0', sizeof(buf));
 						if((rv = recv(peerSocket, buf, 1, 0))>0)
 						{
 							cout<<buf<<endl;
@@ -577,20 +609,24 @@ int main(int argc, char const *argv[])
 						}
 
 						//create threads for chat send and chat rcv.
+						rcvAlive=true, sendAlive=true;
 						if(pthread_create(&threads[1], NULL , chatSend, (void*)peerSocket)!=0) //for send
 						{
 							cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
 							close(peerSocket);
+							rcvAlive=false, sendAlive=false;
+							continue;
 						}
 						if( pthread_create(&threads[2], NULL , chatRcv, (void*)peerSocket)!=0)
 						{
 							cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
 							close(peerSocket);
+							rcvAlive=false, sendAlive=false;
+							continue;
 						}
-						rcvAlive=true, rcvAlive=true;
 
 						//wait for both threads to complete
-						while(sendAlive || rcvAlive);
+						while(sendAlive && rcvAlive);
 						
 						break;	//break of switch case statement
 
