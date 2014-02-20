@@ -23,16 +23,15 @@ using namespace std;
 
 #define BACKLOG 10	 // how many pending connections queue will hold
 
-#define MAXTHREADS 50
+#define MAXTHREADS 100
 
-#define TTL 5
+#define TTL 30
 
 #define MAXDATASIZE 100
 
 struct info
 {
 	int sock_fd;
-	time_t ttl;
 	string ip;
 };
 
@@ -76,10 +75,8 @@ void *threadForClient(void* s)
 			//remove time entirely from map.
 			//if ping is recvd, do nothing.
 			cout<<"PING from"<<client_ip<<endl;
-			mtx.lock();
-			clientMap[client_ip].ttl = time(0);
-			mtx.unlock();
-			if(send(clientMap[client_ip].sock_fd, "ACK", 5, 0) <0)
+			
+			if(send(clientMap[client_ip].sock_fd, "ACK", 3, 0) <0)
 			{
 				fprintf(stderr,"Error in sending ping ACK to %s\n",clientMap[client_ip].ip.c_str());
 			}
@@ -87,7 +84,6 @@ void *threadForClient(void* s)
 		if(strcmp (buf, "LIST")==0)
 		{
 			mtx.lock();
-			clientMap[client_ip].ttl = time(0);
 			for(auto it=clientMap.begin();it!=clientMap.end();it++)
 			{
 				table += it->second.ip;
@@ -127,7 +123,7 @@ int main(int argc, char const *argv[])
 	string client_ip;
 
 	//for recv timeout
-	tv.tv_sec = 30;  /* 30 Secs Timeout */
+	tv.tv_sec = TTL;  /* 30 Secs Timeout */
 	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 
 	memset(&hints, 0, sizeof hints);
@@ -228,7 +224,6 @@ int main(int argc, char const *argv[])
 				
 		clientMap[client_ip].ip = client_ip;
 		clientMap[client_ip].sock_fd = new_fd;
-		clientMap[client_ip].ttl = time(0);
 
 		mtx.unlock();
 		

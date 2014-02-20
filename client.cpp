@@ -1,4 +1,3 @@
-//make send thread exit as sooon as rcv dies and vice versa using bools
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -26,8 +25,6 @@ using namespace std;
 #define BACKLOG 10	 // how many pending connections queue will hold
 
 #define MAXTHREADS 3
-
-#define TTL 5
 
 #define MAXDATASIZE 100
 
@@ -518,7 +515,7 @@ int main(int argc, char const *argv[])
 				continue;
 			}
 			cout<<"Connected successfully to peer. You may now start chatting\n\n\n";
-			
+
 			//create threads for chat send and chat rcv.
 			rcvAlive=true, sendAlive=true;
 			if(pthread_create(&threads[1], NULL , chatSend, (void*)new_fd)!=0) //for send
