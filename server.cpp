@@ -15,6 +15,7 @@
 #include <pthread.h>
 #include <mutex>
 #include <iostream>
+#include <csignal>
 
 using namespace std;
 
@@ -76,9 +77,9 @@ void *threadForClient(void* s)
 			mtx.lock();
 			clientMap[client_ip].ttl = time(0);
 			mtx.unlock();
-			if(send(client_table[client_ip].sock_fd, "ACK", 5, 0) <0)
+			if(send(clientMap[client_ip].sock_fd, "ACK", 5, 0) <0)
 			{
-				fprintf(stderr,"Error in sending ping ACK to %s\n",client_table[client_ip].ip.c_str());
+				fprintf(stderr,"Error in sending ping ACK to %s\n",clientMap[client_ip].ip.c_str());
 			}
 		}
 		if(strcmp (buf, "LIST")==0)
@@ -92,9 +93,9 @@ void *threadForClient(void* s)
 			}
 			mtx.unlock();
 
-			if(send(client_table[client_ip].sock_fd, table.c_str(), MAXDATASIZE-1, 0) < 0)
+			if(send(clientMap[client_ip].sock_fd, table.c_str(), MAXDATASIZE-1, 0) < 0)
 			{
-				fprintf(stderr,"Error in sending client table to %s\n",client_table[client_ip].ip.c_str());
+				fprintf(stderr,"Error in sending client table to %s\n",clientMap[client_ip].ip.c_str());
 			}
 		}
 	}
@@ -112,6 +113,8 @@ void *threadForClient(void* s)
 
 int main(int argc, char const *argv[])
 {
+	signal(SIGPIPE, SIG_IGN);
+
 	int sockfd, new_fd, yes=1, rv, rc, threadCnt=0;  
 	struct addrinfo hints, *servinfo, *p;
 	struct sockaddr_storage their_addr; // connector's address information
@@ -228,12 +231,11 @@ int main(int argc, char const *argv[])
 		mtx.unlock();
 
 		if((rc = pthread_create(&threads[threadMap[client_ip]], NULL , threadForClient, (void*)s))!=0) ;
-	
-		if (rc){
-	     	fprintf(stderr,"Error:unable to create thread, %d\n",rc);
-	     	close(clientMap[client_ip].sock_fd);
-	     	clientMap.erase(client_ip);
-	  	}
+		{
+			fprintf(stderr,"Error:unable to create thread, %d\n",rc);
+			close(clientMap[client_ip].sock_fd);
+			clientMap.erase(client_ip);
+		}
 
 	}
 

@@ -1,3 +1,4 @@
+//make send thread exit as sooon as rcv dies and vice versa using bools
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -24,7 +25,7 @@ using namespace std;
 
 #define BACKLOG 10	 // how many pending connections queue will hold
 
-#define MAXTHREADS 2
+#define MAXTHREADS 3
 
 #define TTL 5
 
@@ -36,8 +37,11 @@ using namespace std;
 #define ANSI_COLOR_RESET   "\x1b[0m"
 
 
-pthread_t threads[MAXTHREADS]; //thread[0] for ping, thread[1] for peer chat
+pthread_t threads[MAXTHREADS]; //thread[0] for ping, thread[1] for peer send, thread[2] for peer rcv
 mutex mtx;
+FILE *f = fopen("chat.txt","a");
+bool pingAlive, sendAlive, rcvAlive;	//to check running status of the 3 threads.
+//consider if mutx req. for above or not.
 
 //for recv timeout in ACK from server
 struct timeval tv;
@@ -64,7 +68,7 @@ void *sendPing(void *fd)
 	char buf[5];
 	while(1)
 	{
-
+		pingAlive=true;
 		if(send(sockfd, "PING", 5, 0) <0)
 		{
 			fprintf(stderr,"Error in sending PING to server\n");
@@ -79,9 +83,10 @@ void *sendPing(void *fd)
 		{
 			cout<<"Server Down! Application will exit after current chat is over...\n";
 			close(sockfd);
+			pingAlive=false;
 			pthread_exit(NULL);
 		}
-		usleep(10);
+		usleep(10000000); //10 sec
 	}
 }
 
@@ -110,27 +115,110 @@ bool getOnlineClients(int sockfd)
 }
 
 
-void *chatSend()
+void *chatSend(void *fd)
 {
-
-}
-void *chatRcv()
-{
-	char msg[MAXDATASIZE];
-	std::vector<string> buf;
-	if((rv=recv(socket, msg, MAXDATASIZE, 0))>0)
+	int socket=*((int *)fd);
+	int msgNo=1;
+	while(1)
 	{
-		string sMsg= string(msg);
-		if(sMsg.substr(0,3)=="ACK")		//ACK for msg received
+		sendAlive=true;
+		char msg[MAXDATASIZE];
+		string buf;
+
+		memset(msg, '\0', sizeof(msg));
+		cout<<"#"<<msgNo++<<":";
+		fgets(msg, MAXDATASIZE-3, stdin);
+		
+		if(msg[0]=='\0')	//client wishes to close connection
 		{
-			cout<<"-------------------------------------------------"<<endl;
-			printf(ANSI_COLOR_RED "%s\n" ANSI_COLOR_RESET,sMsg );
-			cout<<"-------------------------------------------------"<<endl;
+			cout<<"Connection to peer closed."<<endl;
+			close(socket);		//consider this. this should not be done.
+			mtx.lock();
+			fclose(f);
+			//also remove file
+			mtx.unlock();
+			sendAlive=false;
+			pthread_exit(NULL);
 		}
-		else
+
+		buf="#"+to_string(msgNo-1)+":";
+		buf+=string(msg);
+
+		if(send(socket, (char *)(buf.c_str()), size_t(buf.size()), 0) <0)
 		{
-			
+			fprintf(stderr,"Error in sending msg to peer\n");
 		}
+
+		//writting to chat file
+		mtx.lock();
+		fprintf(f, "%s", (char *)(buf.c_str()));
+		mtx.unlock();
+
+	}
+}
+
+void *chatRcv(void *fd)
+{
+	int socket=*((int *)fd), rv;
+	while(1)
+	{
+		rcvAlive=true;
+		char msg[MAXDATASIZE];
+		string buf;
+		if((rv=recv(socket, msg, MAXDATASIZE, 0))>0)
+		{
+			string sMsg= string(msg);
+			if(sMsg.substr(0,3)=="ACK")		//ACK for msg received
+			{
+				buf+="-------------------------------------------------\n";
+				buf+="MSG:"+sMsg.substr(3,sMsg.size()-1)+"seen.\n";
+				buf+="-------------------------------------------------\n";
+			}
+			/*
+			MSG received. Need to send ACK.
+			message format - #13:hello
+			*/
+			else
+			{
+				string msgNo="ACK";	//to extract msgNo. from message and build the ACK response
+				int i=1;	//skipping the starting '#'
+				while(sMsg[i]!=':')
+				{
+					i++;
+					msgNo+=sMsg[i];		//extracting msgNo. from the message.
+				}
+				buf=sMsg+"\n";
+
+				//sending ACK for the above message.
+
+				if(send(socket, (char *)(msgNo.c_str()), size_t(sMsg.size()), 0) <0)
+				{
+					fprintf(stderr,"Error in sending ACK to peer\n");
+				}
+
+			}
+		}
+		else if (rv<0)
+		{
+			perror("rcv");
+			continue;
+		}
+		else //rv==0
+		{
+			cout<<"Connection closed by peer. Chat will exit.";
+			close(socket);		//think about this. you can't close socket.
+			mtx.lock();
+			fclose(f);
+			//also remove file
+			mtx.unlock();
+			rcvAlive=false;
+			pthread_exit(NULL);
+		}
+
+		//writting to chat file.
+		mtx.lock();
+		fprintf(f, "%s", (char *)(buf.c_str()));
+		mtx.unlock();
 	}
 
 }
@@ -148,7 +236,7 @@ int main(int argc, char const *argv[])
 	socklen_t sin_size;
 	
 	//recv timeout for ACK from server
-	tv.tv_sec = 5;  /* 5 Secs Timeout */
+	tv.tv_sec = 3;  /* 3 Secs Timeout */
 	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
 
 	if (argc != 2) {
@@ -373,7 +461,20 @@ int main(int argc, char const *argv[])
 				continue;
 			}
 
-			//thread code for chat
+			//create threads for chat send and chat rcv.
+			if(pthread_create(&threads[1], NULL , chatSend, (void*)new_fd)!=0) //for send
+			{
+				cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
+				close(new_fd);
+			}
+			if( pthread_create(&threads[2], NULL , chatRcv, (void*)new_fd)!=0)
+			{
+				cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
+				close(new_fd);
+			}
+
+			//wait till the above threads die.
+			while(sendAlive && rcvAlive);
 		}
 
 		//if stdin gets first
@@ -445,18 +546,35 @@ int main(int argc, char const *argv[])
 
 						freeaddrinfo(peerinfo); // all done with this structure
 
-						//thread code for send recv
-						break;
+						//create threads for chat send and chat rcv.
+						if(pthread_create(&threads[1], NULL , chatSend, (void*)peerSocket)!=0) //for send
+						{
+							cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
+							close(peerSocket);
+						}
+						if( pthread_create(&threads[2], NULL , chatRcv, (void*)peerSocket)!=0)
+						{
+							cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
+							close(peerSocket);
+						}
+
+						//wait for both threads to complete
+						while(sendAlive && rcvAlive);
+						
+						break;	//break of switch case statement
+
+				default:
+						cout<<"Enter a valid choice..."<<endl;
 			}
+		}
+		//check status of ping thread, and if it is dead, (and given that chat is not happening here) kill application
+		if(!pingAlive)	//connection to server is lost. application should exit
+		{
+			cout<<"Connection to server lost. Application will now exit...";
+			return 1;
 		}
 		
 	}
-
-
-	//if ping thread exits, program should exit
-	//sendPing(sockfd);	//wait for chat thread and exit program based on sendPIng ret value
-
-
 
 	return 0;
 
