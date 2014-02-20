@@ -42,7 +42,7 @@ mutex mtx;
 FILE *f;
 
 bool pingAlive, sendAlive, rcvAlive;	//to check running status of the 3 threads.
-//consider if mutx req. for above or not.
+
 
 //for recv timeout in ACK from server
 struct timeval tv;
@@ -75,11 +75,11 @@ void *sendPing(void *fd)
 		{
 			fprintf(stderr,"Error in sending PING to server\n");
 		}
-
+		memset(buf, '\0', 5);
 		if((rv = recv(sockfd, buf, 5, 0))>0)
 		{
 			if(strcmp(buf, "ACK"))
-				cout<<"Ping ACKed\n";	//check if really ACKed or not
+				cout<<"Ping ACKed\n";	
 		}
 		else 
 		{
@@ -96,7 +96,7 @@ void *sendPing(void *fd)
 				exit(1);
 			}
 		}
-		usleep(10000000); //10 sec
+		usleep(10000000); //ping every 10 sec
 	}
 }
 
@@ -109,10 +109,11 @@ bool getOnlineClients(int sockfd)
 	}
 
 	char buf[MAXDATASIZE];
+	memset(buf, '\0', MAXDATASIZE);
 	if((rv = recv(sockfd, buf, MAXDATASIZE-1, 0))>0)
 	{
+		cout<<"Online clients :-\n";
 		cout<<string(buf);
-		cout<<"Enter the IP address you want to connect to: ";
 	}
 	else
 	{
@@ -206,7 +207,7 @@ void *chatRcv(void *fd)
 		if((rv=recv(socket, msg, MAXDATASIZE, 0))>0)
 		{
 			string sMsg= string(msg);
-			 cout<<endl<<sMsg<<endl;
+			 // cout<<endl<<sMsg<<endl;
 			if(sMsg=="/exit") 
 			{
 				cout<<"Connection closed by peer. Application will exit"<<endl;
@@ -215,7 +216,7 @@ void *chatRcv(void *fd)
 			if(sMsg.substr(0,3)=="ACK")		//ACK for msg received
 			{
 				// buf+="-------------------------------------------------\n";
-				buf+="\t\t\t\tMSG:"+sMsg.substr(3,sMsg.size()-3)+" seen.\n";
+				buf+="\t\t\tMSG:"+sMsg.substr(3,sMsg.size()-3)+" seen.\n";
 				// buf+="-------------------------------------------------\n";
 			}
 			/*
@@ -257,7 +258,7 @@ void *chatRcv(void *fd)
 		}
 		else //rv==0
 		{
-			cout<<"Connection closed by peer. Chat will exit.";
+			cout<<"Connection closed by peer. Chat will exit.\n";
 			close(socket);		//think about this. you can't close socket.
 			mtx.lock();
 			if(f!=NULL) fclose(f);
@@ -288,7 +289,7 @@ int main(int argc, char const *argv[])
 	struct sigaction sa;
 	socklen_t sin_size;
 	
-	f = fopen("chat.txt","a");
+	f = fopen("chat.txt","w");
 
 	if(f==NULL)
 	{
@@ -391,8 +392,6 @@ int main(int argc, char const *argv[])
 		fprintf(stderr,"Error:unable to create thread, %d\n",rc);
 		return 1;
 	}
-	cout<<"Check";
-
 	/*------- creating socket for chat and binding it to port. Will be used both for connect and listen-----*/
 
 	
@@ -403,10 +402,7 @@ int main(int argc, char const *argv[])
 	// char s[INET6_ADDRSTRLEN];
 	// string peerIP;
 	
-	//recv timeout for ACK from server
-	tv.tv_sec = 5;  /* 5 Secs Timeout */
-	tv.tv_usec = 0;  // Not init'ing this can cause strange errors
-
+	
 	if (argc != 2) {
 		fprintf(stderr,"usage: client hostname\n");
 		exit(1);
@@ -473,7 +469,7 @@ int main(int argc, char const *argv[])
 
 	while(1)
 	{
-		printf("waiting for connections...\n");
+		// printf("waiting for connections...\n");
 		
 		FD_SET(clientSocket, &readfds);		//used for adding given fd to a set
 		FD_SET(0, &readfds);
@@ -483,14 +479,15 @@ int main(int argc, char const *argv[])
 		cout<<"Press appropriate key:"<<endl;
 		cout<<"Press 1 to get Online Clients List."<<endl;
 		cout<<"Press 2 to connect to a peer (need its IP address)."<<endl;
-		cout<<"\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<endl;
+		cout<<"Press 3 to exit (need its IP address)."<<endl;
+		cout<<"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<endl;
 		
 		select(clientSocket+1, &readfds, NULL, NULL, NULL);
 
 		//If peer gets first
 		if(FD_ISSET(clientSocket, &readfds))
 		{
-			cout<<"peer got here first\n";
+			// cout<<"peer got here first\n";
 			char peerMsg[5];
 			memset(peerMsg, '\0', 5);
 
@@ -520,7 +517,8 @@ int main(int argc, char const *argv[])
 				close(new_fd);
 				continue;
 			}
-
+			cout<<"Connected successfully to peer. You may now start chatting\n\n\n";
+			
 			//create threads for chat send and chat rcv.
 			rcvAlive=true, sendAlive=true;
 			if(pthread_create(&threads[1], NULL , chatSend, (void*)new_fd)!=0) //for send
@@ -545,9 +543,9 @@ int main(int argc, char const *argv[])
 		//if stdin gets first
 		else if(FD_ISSET(0, &readfds))
 		{
-			cout<<"stdin got here first\n";
+			// cout<<"stdin got here first\n";
 			cin>>choice;
-			cout<<"choice="<<choice<<endl;
+			// cout<<"choice="<<choice<<endl;
 			int peerSocket;
 			// char buf[MAXDATASIZE];
 			struct addrinfo *peerinfo;
@@ -565,6 +563,7 @@ int main(int argc, char const *argv[])
 						break;
 
 				case 2:		//connect to peer
+						cout<<"Enter the IP address you want to connect to: ";
 						cin>>peerIP;
 						memset(&hints, 0, sizeof hints);
 						hints.ai_family = AF_UNSPEC;
@@ -615,7 +614,7 @@ int main(int argc, char const *argv[])
 						memset(buf, '\0', sizeof(buf));
 						if((rv = recv(peerSocket, buf, 1, 0))>0)
 						{
-							cout<<buf<<endl;
+							// cout<<buf<<endl;
 							if(buf[0]== 'y')
 								cout<<"Connected successfully to peer. You may now start chatting\n\n\n";
 							else
@@ -653,7 +652,8 @@ int main(int argc, char const *argv[])
 						while(sendAlive && rcvAlive);
 						
 						break;	//break of switch case statement
-
+				case 3:		//exit
+						return 0;
 				default:
 						cout<<"Enter a valid choice..."<<endl;
 			}
