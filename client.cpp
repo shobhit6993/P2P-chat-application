@@ -256,13 +256,14 @@ void *chatRcv(void *fd)
 		else //rv==0
 		{
 			cout<<"Connection closed by peer. Chat will exit.\n";
-			close(socket);		//think about this. you can't close socket.
-			mtx.lock();
-			if(f!=NULL) fclose(f);
-			//also remove file
-			mtx.unlock();
-			rcvAlive=false;
-			pthread_exit(NULL);
+			exit(1);
+			// close(socket);		//think about this. you can't close socket.
+			// mtx.lock();
+			// if(f!=NULL) fclose(f);
+			// //also remove file
+			// mtx.unlock();
+			// rcvAlive=false;
+			// pthread_exit(NULL);
 		}
 
 		//writting to chat file.
@@ -517,6 +518,7 @@ int main(int argc, char const *argv[])
 			cout<<"Connected successfully to peer. You may now start chatting\n\n\n";
 
 			//create threads for chat send and chat rcv.
+			getchar();
 			rcvAlive=true, sendAlive=true;
 			if(pthread_create(&threads[1], NULL , chatSend, (void*)new_fd)!=0) //for send
 			{
@@ -630,6 +632,7 @@ int main(int argc, char const *argv[])
 
 						//create threads for chat send and chat rcv.
 						rcvAlive=true, sendAlive=true;
+						getchar();
 						if(pthread_create(&threads[1], NULL , chatSend, (void*)peerSocket)!=0) //for send
 						{
 							cout<<"Failed to create new thread for chat. Connection to peer will be closed ";
