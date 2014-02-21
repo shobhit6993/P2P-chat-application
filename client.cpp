@@ -37,7 +37,7 @@ using namespace std;
 pthread_t threads[MAXTHREADS]; //thread[0] for ping, thread[1] for peer send, thread[2] for peer rcv
 mutex mtx;
 FILE *f;
-
+string argument;
 bool pingAlive, sendAlive, rcvAlive;	//to check running status of the 3 threads.
 
 
@@ -133,10 +133,7 @@ void *chatSend(void *fd)
 		{
 			cout<<"Connection to peer closed."<<endl;
 			close(socket);		//consider this. this should not be done.
-			mtx.lock();
-			if(f!=NULL) fclose(f);
-			//also remove file
-			mtx.unlock();
+			
 			sendAlive=false;
 			pthread_exit(NULL);
 		}
@@ -146,7 +143,8 @@ void *chatSend(void *fd)
 		string buf;
 
 		// memset(msg, '\0', sizeof(msg));
-		cout<<"ME#"<<msgNo++<<":";
+		// cout<<"ME#"<<msgNo++<<":";
+		msgNo++;
 		// fgets(msg, MAXDATASIZE-3, stdin);
 		getline(cin, msg);
 		// cout<<endl<<msg<<endl;
@@ -164,18 +162,19 @@ void *chatSend(void *fd)
 		{
 			fprintf(stderr,"Error in sending msg to peer\n");
 			close(socket);		//consider this. this should not be done.
-			mtx.lock();
-			if(f!=NULL) fclose(f);
-			//also remove file
-			mtx.unlock();
+			
 			sendAlive=false;
 			pthread_exit(NULL);
 		}
 
 		//writting to chat file
 		mtx.lock();
-		if(f!=0) fprintf(f, "ME%s\n", (char *)(buf.c_str()));
-		else cout<<"ME"<<buf<<endl;
+		if (argument=="file")
+		{
+			f=fopen("chat.txt", "a");
+			fprintf(f, "ME%s\n", (char *)(buf.c_str()));
+			fclose(f);
+		}
 		mtx.unlock();
 
 	}
@@ -190,10 +189,7 @@ void *chatRcv(void *fd)
 		{
 			cout<<"Connection to peer closed."<<endl;
 			close(socket);		//consider this. this should not be done.
-			mtx.lock();
-			if(f!=NULL) fclose(f);
-			//also remove file
-			mtx.unlock();
+			
 			rcvAlive=false;
 			pthread_exit(NULL);
 		}
@@ -239,10 +235,7 @@ void *chatRcv(void *fd)
 					fprintf(stderr,"Error in sending ACK to peer\n");
 					cout<<"Connection to peer closed."<<endl;
 					close(socket);		//consider this. this should not be done.
-					mtx.lock();
-					if(f!=NULL) fclose(f);
-					//also remove file
-					mtx.unlock();
+					
 					rcvAlive=false;
 					pthread_exit(NULL);
 				}
@@ -269,7 +262,12 @@ void *chatRcv(void *fd)
 
 		//writting to chat file.
 		mtx.lock();
-		if (f!=0) fprintf(f, "%s", (char *)(buf.c_str()));
+		if (argument=="file")
+		{
+			f=fopen("chat.txt", "a");
+			fprintf(f, "%s", (char *)(buf.c_str()));
+			fclose(f);
+		}
 		else cout<<buf<<endl;
 		mtx.unlock();
 	}
@@ -299,18 +297,19 @@ int main(int argc, char const *argv[])
 		f=0;
 	else if(strcmp(argv[2],"file")==0)
 	{
-		f = fopen("chat.txt","w");
+		/*f = fopen("chat.txt","w");
 		if(f==NULL)
 		{
 			cout<<"Unable to open file. Application will exit...";
 			return 1;
-		}
+		}*/
 	}
 	else
 	{
 		cout<<"Usage: ./client serverIP {stdin/file}\n";
 		return 1;
 	}
+	argument=string(argv[2]);
 
 
 	

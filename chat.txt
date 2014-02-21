@@ -1,3 +1,14 @@
 ME#1:hello
 			MSG:1 seen.
 	PEER#1:sdfsdf
+	PEER#1:hello
+ME#1:heeeee
+			MSG:1 seen.
+ME#2:slkdjf
+			MSG:2 seen.
+	PEER#2:sd
+ME#3:sdfsd
+			MSG:3 seen.
+	PEER#3:sdfdddd
+ME#4:sdf
+			MSG:4 seen.
